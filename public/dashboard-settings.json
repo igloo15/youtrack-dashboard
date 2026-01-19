@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "title": "Platform Dashboard",
+    "subtitle": "Project Issue Tracking"
+  },
+  "globalFilters": {
+    "enabled": true,
+    "availableFields": [
+      {
+        "name": "Type",
+        "label": "Issue Type",
+        "enabled": true
+      },
+      {
+        "name": "Priority",
+        "label": "Priority Level",
+        "enabled": true
+      },
+      {
+        "name": "State",
+        "label": "Status",
+        "enabled": true
+      },
+      {
+        "name": "Assignee",
+        "label": "Assigned To",
+        "enabled": false
+      }
+    ],
+    "defaultField": ""
+  },
+  "charts": {
+    "matrix": {
+      "defaultXField": "State",
+      "defaultYField": "Priority"
+    }
+  }
+}

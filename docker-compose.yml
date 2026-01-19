@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  youtrack-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtrack-dashboard
+    ports:
+      - "3000:80"
+    volumes:
+      # Mount settings file to allow runtime configuration
+      - ./public/dashboard-settings.json:/usr/share/nginx/html/dashboard-settings.json:ro
+      # Optionally mount .env file if you need to change it without rebuilding
+      # - ./.env:/app/.env:ro
+    environment:
+      # These will be baked into the build, but can be overridden here
+      - VITE_YOUTRACK_URL=${VITE_YOUTRACK_URL:-}
+      - VITE_YOUTRACK_TOKEN=${VITE_YOUTRACK_TOKEN:-perm:your-token-here}
+      - VITE_YOUTRACK_PROJECT_ID=${VITE_YOUTRACK_PROJECT_ID:-YOUR-PROJECT}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - youtrack-network
+
+  # Optional: If you're running YouTrack in Docker too
+  # youtrack:
+  #   image: jetbrains/youtrack:2024.1
+  #   container_name: youtrack
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - youtrack-data:/opt/youtrack/data
+  #     - youtrack-logs:/opt/youtrack/logs
+  #     - youtrack-conf:/opt/youtrack/conf
+  #     - youtrack-backups:/opt/youtrack/backups
+  #   restart: unless-stopped
+  #   networks:
+  #     - youtrack-network
+
+networks:
+  youtrack-network:
+    driver: bridge
+
+# Uncomment if using YouTrack container
+# volumes:
+#   youtrack-data:
+#   youtrack-logs:
+#   youtrack-conf:
+#   youtrack-backups:
