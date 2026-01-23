@@ -32,7 +32,12 @@ export const settingsService = {
         globalFilters: {
           enabled: settings.globalFilters?.enabled ?? DEFAULT_SETTINGS.globalFilters.enabled,
           availableFields: settings.globalFilters?.availableFields || DEFAULT_SETTINGS.globalFilters.availableFields,
-          defaultField: settings.globalFilters?.defaultField || DEFAULT_SETTINGS.globalFilters.defaultField,
+          allowMultiple: settings.globalFilters?.allowMultiple ?? DEFAULT_SETTINGS.globalFilters.allowMultiple,
+          defaultFilters: settings.globalFilters?.defaultFilters || DEFAULT_SETTINGS.globalFilters.defaultFilters,
+          dateFilter: {
+            enabled: settings.globalFilters?.dateFilter?.enabled ?? DEFAULT_SETTINGS.globalFilters.dateFilter.enabled,
+            defaultRange: settings.globalFilters?.dateFilter?.defaultRange || DEFAULT_SETTINGS.globalFilters.dateFilter.defaultRange,
+          },
         },
         charts: {
           matrix: {

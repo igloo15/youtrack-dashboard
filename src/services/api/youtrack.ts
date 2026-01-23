@@ -1,8 +1,8 @@
 import { youtrackApi } from './config';
-import { Issue, IssuesResponse, IssueQueryParams } from '@/types/youtrack';
+import { Issue, IssuesResponse, IssueQueryParams, AgileBoard, AgileBoardsResponse } from '@/types/youtrack';
 import { TimeSeriesDataPoint } from '@/types/dashboard';
 import env from '@/config/env';
-import { mockIssues, shouldUseMockData } from './mockData';
+import { mockIssues, mockAgileBoards, shouldUseMockData } from './mockData';
 
 export const youtrackService = {
   // Fetch issues with filters
@@ -90,5 +90,43 @@ export const youtrackService = {
     return Array.from(dateMap.entries())
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date));
+  },
+
+  // Fetch agile boards linked to the project
+  async getAgileBoards(): Promise<AgileBoardsResponse> {
+    // Use mock data if credentials are invalid
+    if (shouldUseMockData()) {
+      console.info('🔧 Using mock agile boards data');
+      return {
+        boards: mockAgileBoards,
+        total: mockAgileBoards.length,
+      };
+    }
+
+    try {
+      const response = await youtrackApi.get<AgileBoard[]>('/agiles', {
+        params: {
+          fields: 'id,name,owner(login,fullName),projects(id,name,shortName),sprints(id,name,goal,start,finish,isDefault),currentSprint(id,name,goal,start,finish),sprintsSettings(disableSprints)',
+          $top: 50,
+        },
+      });
+
+      // Filter boards that are linked to the current project
+      const projectId = env.VITE_YOUTRACK_PROJECT_ID;
+      const filteredBoards = response.data.filter(board =>
+        board.projects?.some(project => project.shortName === projectId || project.id === projectId)
+      );
+
+      return {
+        boards: filteredBoards,
+        total: filteredBoards.length,
+      };
+    } catch (error) {
+      console.warn('⚠️ Agile boards API request failed, falling back to mock data:', error);
+      return {
+        boards: mockAgileBoards,
+        total: mockAgileBoards.length,
+      };
+    }
   },
 };

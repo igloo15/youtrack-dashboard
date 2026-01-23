@@ -27,7 +27,12 @@
         "enabled": false
       }
     ],
-    "defaultField": ""
+    "allowMultiple": true,
+    "defaultFilters": ["Type", "State"],
+    "dateFilter": {
+      "enabled": true,
+      "defaultRange": "last-month"
+    }
   },
   "charts": {
     "matrix": {

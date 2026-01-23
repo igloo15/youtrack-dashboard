@@ -71,3 +71,40 @@ export interface IssuesResponse {
 export type IssueState = 'Open' | 'In Progress' | 'Resolved' | 'Closed' | 'Verified';
 export type IssuePriority = 'Critical' | 'High' | 'Normal' | 'Low';
 export type IssueType = 'Bug' | 'Feature' | 'Task' | 'Epic';
+
+// Agile Board types
+export interface AgileColumn extends YouTrackEntity {
+  name: string;
+  isResolved?: boolean;
+  ordinal?: number;
+}
+
+export interface AgileSprint extends YouTrackEntity {
+  name: string;
+  goal?: string;
+  start?: number;
+  finish?: number;
+  isDefault?: boolean;
+}
+
+export interface AgileBoard extends YouTrackEntity {
+  name: string;
+  owner?: User;
+  createdBy?: User;
+  projects?: Array<{
+    id: string;
+    name: string;
+    shortName: string;
+  }>;
+  columns?: AgileColumn[];
+  sprints?: AgileSprint[];
+  currentSprint?: AgileSprint;
+  sprintsSettings?: {
+    disableSprints?: boolean;
+  };
+}
+
+export interface AgileBoardsResponse {
+  boards: AgileBoard[];
+  total: number;
+}

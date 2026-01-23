@@ -1,4 +1,4 @@
-import { Issue } from '@/types/youtrack';
+import { Issue, AgileBoard } from '@/types/youtrack';
 
 // Mock data for testing without valid API credentials
 export const mockIssues: Issue[] = [
@@ -435,6 +435,102 @@ export const mockIssues: Issue[] = [
         name: 'security',
       },
     ],
+  },
+];
+
+// Mock agile boards data
+export const mockAgileBoards: AgileBoard[] = [
+  {
+    $type: 'AgileBoard',
+    id: 'board1',
+    name: 'Sprint Board',
+    owner: {
+      $type: 'User',
+      id: 'user1',
+      login: 'john.doe',
+      fullName: 'John Doe',
+    },
+    projects: [
+      {
+        id: 'proj1',
+        name: 'Platform Project',
+        shortName: 'PROJ',
+      },
+    ],
+    currentSprint: {
+      $type: 'Sprint',
+      id: 'sprint1',
+      name: 'Sprint 15',
+      goal: 'Complete authentication and user management features',
+      start: Date.now() - 7 * 24 * 60 * 60 * 1000, // Started 7 days ago
+      finish: Date.now() + 7 * 24 * 60 * 60 * 1000, // Ends in 7 days
+      isDefault: false,
+    },
+    sprints: [
+      {
+        $type: 'Sprint',
+        id: 'sprint1',
+        name: 'Sprint 15',
+        goal: 'Complete authentication and user management features',
+        start: Date.now() - 7 * 24 * 60 * 60 * 1000,
+        finish: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        isDefault: false,
+      },
+      {
+        $type: 'Sprint',
+        id: 'sprint2',
+        name: 'Sprint 16',
+        goal: 'Dashboard improvements and analytics',
+        start: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        finish: Date.now() + 21 * 24 * 60 * 60 * 1000,
+        isDefault: false,
+      },
+    ],
+    sprintsSettings: {
+      disableSprints: false,
+    },
+  },
+  {
+    $type: 'AgileBoard',
+    id: 'board2',
+    name: 'Kanban Board',
+    owner: {
+      $type: 'User',
+      id: 'user2',
+      login: 'jane.smith',
+      fullName: 'Jane Smith',
+    },
+    projects: [
+      {
+        id: 'proj1',
+        name: 'Platform Project',
+        shortName: 'PROJ',
+      },
+    ],
+    sprintsSettings: {
+      disableSprints: true,
+    },
+  },
+  {
+    $type: 'AgileBoard',
+    id: 'board3',
+    name: 'Bug Tracking Board',
+    owner: {
+      $type: 'User',
+      id: 'user3',
+      login: 'bob.wilson',
+      fullName: 'Bob Wilson',
+    },
+    projects: [
+      {
+        id: 'proj1',
+        name: 'Platform Project',
+        shortName: 'PROJ',
+      },
+    ],
+    sprintsSettings: {
+      disableSprints: true,
+    },
   },
 ];
 

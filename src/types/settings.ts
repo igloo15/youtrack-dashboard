@@ -12,7 +12,12 @@ export interface DashboardSettings {
   globalFilters: {
     enabled: boolean;
     availableFields: GlobalFilterField[];
-    defaultField: string;
+    allowMultiple: boolean; // If true, users can add multiple field filters
+    defaultFilters: string[]; // Array of default field names to show on load
+    dateFilter: {
+      enabled: boolean;
+      defaultRange: string; // 'all', 'last-week', 'last-month', 'last-3-months', 'last-year'
+    };
   };
   charts: {
     matrix: {
@@ -30,7 +35,12 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   globalFilters: {
     enabled: true,
     availableFields: [],
-    defaultField: '',
+    allowMultiple: true,
+    defaultFilters: [],
+    dateFilter: {
+      enabled: true,
+      defaultRange: 'all',
+    },
   },
   charts: {
     matrix: {

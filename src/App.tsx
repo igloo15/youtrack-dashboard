@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useYouTrackIssues } from '@/hooks/useYouTrackIssues';
+import { useAgileBoards } from '@/hooks/useAgileBoards';
 import { useIssueFilters } from '@/hooks/useIssueFilters';
 import { youtrackService } from '@/services/api/youtrack';
 import { TimeSeriesDataPoint, ChartDataPoint } from '@/types/dashboard';
@@ -9,6 +10,7 @@ import { shouldUseMockData } from '@/services/api/mockData';
 import { IssueMatrixChart } from '@/components/charts/IssueMatrixChart';
 import { settingsService } from '@/services/settings';
 import { DashboardSettings, DEFAULT_SETTINGS } from '@/types/settings';
+import { getIssueUrl, getAgileBoardUrl } from '@/utils/youtrack-urls';
 
 const CHART_COLORS = [
   'hsl(221, 83%, 53%)',
@@ -20,6 +22,7 @@ const CHART_COLORS = [
 
 function App() {
   const { issues, loading, error, refetch } = useYouTrackIssues();
+  const { boards, loading: boardsLoading, error: boardsError } = useAgileBoards();
   const usingMockData = shouldUseMockData();
 
   const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
@@ -34,8 +37,30 @@ function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  const [globalFilterField, setGlobalFilterField] = useState<string>('');
-  const [globalFilterValue, setGlobalFilterValue] = useState<string>('all');
+  // Multiple global filters support
+  interface ActiveFilter {
+    id: string;
+    field: string;
+    value: string;
+  }
+
+  // Initialize filters from localStorage or empty array
+  const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>(() => {
+    const saved = localStorage.getItem('dashboardActiveFilters');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Initialize date filter from localStorage
+  const [dateFilterRange, setDateFilterRange] = useState<string>(() => {
+    return localStorage.getItem('dashboardDateFilter') || 'all';
+  });
   const [completedTasksData, setCompletedTasksData] = useState<TimeSeriesDataPoint[]>([]);
   const [statusChartData, setStatusChartData] = useState<ChartDataPoint[]>([]);
   const [matrixXField, setMatrixXField] = useState('State');
@@ -47,10 +72,23 @@ function App() {
       const loadedSettings = await settingsService.loadSettings();
       setSettings(loadedSettings);
 
-      // Apply default values from settings
-      if (loadedSettings.globalFilters.defaultField) {
-        setGlobalFilterField(loadedSettings.globalFilters.defaultField);
+      // Only apply default values if nothing is saved in localStorage
+      const hasStoredFilters = localStorage.getItem('dashboardActiveFilters');
+      const hasStoredDateFilter = localStorage.getItem('dashboardDateFilter');
+
+      if (!hasStoredFilters && loadedSettings.globalFilters.defaultFilters && loadedSettings.globalFilters.defaultFilters.length > 0) {
+        const defaultFilters = loadedSettings.globalFilters.defaultFilters.map((field, index) => ({
+          id: `filter-${Date.now()}-${index}`,
+          field,
+          value: 'all',
+        }));
+        setActiveFilters(defaultFilters);
       }
+
+      if (!hasStoredDateFilter && loadedSettings.globalFilters.dateFilter.defaultRange) {
+        setDateFilterRange(loadedSettings.globalFilters.dateFilter.defaultRange);
+      }
+
       setMatrixXField(loadedSettings.charts.matrix.defaultXField);
       setMatrixYField(loadedSettings.charts.matrix.defaultYField);
 
@@ -70,26 +108,70 @@ function App() {
     localStorage.setItem('darkMode', darkMode.toString());
   }, [darkMode]);
 
+  // Save active filters to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('dashboardActiveFilters', JSON.stringify(activeFilters));
+  }, [activeFilters]);
+
+  // Save date filter to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('dashboardDateFilter', dateFilterRange);
+  }, [dateFilterRange]);
+
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
 
-  // Apply global filter to issues
+  // Helper function to get date range cutoff
+  const getDateCutoff = (range: string): number | null => {
+    if (range === 'all') return null;
+
+    const now = Date.now();
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    switch (range) {
+      case 'last-week':
+        return now - (7 * msPerDay);
+      case 'last-month':
+        return now - (30 * msPerDay);
+      case 'last-3-months':
+        return now - (90 * msPerDay);
+      case 'last-year':
+        return now - (365 * msPerDay);
+      default:
+        return null;
+    }
+  };
+
+  // Apply global filters to issues (multiple field filters + date filter)
   const globallyFilteredIssues = useMemo(() => {
-    if (!globalFilterField || globalFilterValue === 'all') {
-      return issues;
+    let filtered = issues;
+
+    // Apply each active custom field filter
+    activeFilters.forEach(filter => {
+      if (filter.field && filter.value !== 'all') {
+        filtered = filtered.filter(issue => {
+          const fieldData = issue.customFields?.find(f => f.name === filter.field);
+          if (!fieldData?.value) return false;
+
+          if (typeof fieldData.value === 'object' && 'name' in fieldData.value) {
+            return fieldData.value.name === filter.value;
+          }
+          return false;
+        });
+      }
+    });
+
+    // Apply date filter
+    if (dateFilterRange && dateFilterRange !== 'all') {
+      const cutoff = getDateCutoff(dateFilterRange);
+      if (cutoff !== null) {
+        filtered = filtered.filter(issue => issue.updated >= cutoff);
+      }
     }
 
-    return issues.filter(issue => {
-      const fieldData = issue.customFields?.find(f => f.name === globalFilterField);
-      if (!fieldData?.value) return false;
-
-      if (typeof fieldData.value === 'object' && 'name' in fieldData.value) {
-        return fieldData.value.name === globalFilterValue;
-      }
-      return false;
-    });
-  }, [issues, globalFilterField, globalFilterValue]);
+    return filtered;
+  }, [issues, activeFilters, dateFilterRange]);
 
   const { filters, setFilters, filteredIssues } = useIssueFilters(globallyFilteredIssues);
 
@@ -166,19 +248,47 @@ function App() {
     return Array.from(fields).sort();
   }, [issues]);
 
-  // Get available values for the selected global filter field
-  const availableGlobalFilterValues = useMemo(() => {
-    if (!globalFilterField) return [];
+  // Get available values for a specific filter field
+  const getAvailableValuesForField = (fieldName: string): string[] => {
+    if (!fieldName) return [];
 
     const values = new Set<string>();
     issues.forEach(issue => {
-      const fieldData = issue.customFields?.find(f => f.name === globalFilterField);
+      const fieldData = issue.customFields?.find(f => f.name === fieldName);
       if (fieldData?.value && typeof fieldData.value === 'object' && 'name' in fieldData.value) {
         values.add(fieldData.value.name as string);
       }
     });
     return Array.from(values).sort();
-  }, [issues, globalFilterField]);
+  };
+
+  // Helper functions for managing filters
+  const addNewFilter = () => {
+    const newFilter: ActiveFilter = {
+      id: `filter-${Date.now()}`,
+      field: '',
+      value: 'all',
+    };
+    setActiveFilters([...activeFilters, newFilter]);
+  };
+
+  const updateFilter = (id: string, field: string, value: string) => {
+    setActiveFilters(activeFilters.map(filter =>
+      filter.id === id ? { ...filter, field, value } : filter
+    ));
+  };
+
+  const removeFilter = (id: string) => {
+    setActiveFilters(activeFilters.filter(filter => filter.id !== id));
+  };
+
+  const clearAllFilters = () => {
+    setActiveFilters([]);
+    setDateFilterRange('all');
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = activeFilters.some(f => f.field && f.value !== 'all') || dateFilterRange !== 'all';
 
   return (
     <div className="min-h-screen bg-background">
@@ -236,58 +346,102 @@ function App() {
       {settings.globalFilters.enabled && availableCustomFields.length > 0 && (
         <div className="border-b bg-card">
           <div className="container mx-auto p-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="text-sm font-medium text-muted-foreground">Filter All Data:</span>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-muted-foreground">Filter All Data:</span>
+              </div>
 
-              <select
-                value={globalFilterField}
-                onChange={(e) => {
-                  setGlobalFilterField(e.target.value);
-                  setGlobalFilterValue('all');
-                }}
-                className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">No Filter</option>
-                {settings.globalFilters.availableFields
-                  .filter(field => field.enabled && availableCustomFields.includes(field.name))
-                  .map(field => (
-                    <option key={field.name} value={field.name}>{field.label}</option>
-                  ))}
-              </select>
+              {/* Active Filters */}
+              <div className="flex flex-wrap items-start gap-3">
+                {activeFilters.map((filter) => {
+                  const availableFields = settings.globalFilters.availableFields
+                    .filter(field => field.enabled && availableCustomFields.includes(field.name));
+                  const fieldValues = getAvailableValuesForField(filter.field);
 
-              {globalFilterField && (
-                <>
-                  <span className="text-sm text-muted-foreground">=</span>
-                  <select
-                    value={globalFilterValue}
-                    onChange={(e) => setGlobalFilterValue(e.target.value)}
-                    className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  return (
+                    <div key={filter.id} className="flex items-center gap-2 rounded-lg border border-input bg-background p-2">
+                      <select
+                        value={filter.field}
+                        onChange={(e) => updateFilter(filter.id, e.target.value, 'all')}
+                        className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="">Select Field...</option>
+                        {availableFields.map(field => (
+                          <option key={field.name} value={field.name}>{field.label}</option>
+                        ))}
+                      </select>
+
+                      {filter.field && (
+                        <>
+                          <span className="text-sm text-muted-foreground">=</span>
+                          <select
+                            value={filter.value}
+                            onChange={(e) => updateFilter(filter.id, filter.field, e.target.value)}
+                            className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            <option value="all">All Values</option>
+                            {fieldValues.map(value => (
+                              <option key={value} value={value}>{value}</option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+
+                      <button
+                        onClick={() => removeFilter(filter.id)}
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm hover:bg-destructive hover:text-destructive-foreground"
+                        title="Remove filter"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Add Filter Button */}
+                {settings.globalFilters.allowMultiple && (
+                  <button
+                    onClick={addNewFilter}
+                    className="flex h-9 items-center gap-2 rounded-md border border-dashed border-input bg-background px-3 text-sm hover:bg-accent"
                   >
-                    <option value="all">All Values</option>
-                    {availableGlobalFilterValues.map(value => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </>
-              )}
+                    <span>+ Add Filter</span>
+                  </button>
+                )}
+              </div>
 
-              {globalFilterField && globalFilterValue !== 'all' && (
-                <button
-                  onClick={() => {
-                    setGlobalFilterField('');
-                    setGlobalFilterValue('all');
-                  }}
-                  className="rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent"
-                >
-                  Clear Filter
-                </button>
-              )}
+              {/* Date Filter and Actions */}
+              <div className="flex flex-wrap items-center gap-4">
+                {settings.globalFilters.dateFilter.enabled && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-muted-foreground">Updated:</label>
+                    <select
+                      value={dateFilterRange}
+                      onChange={(e) => setDateFilterRange(e.target.value)}
+                      className="flex h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="all">All Time</option>
+                      <option value="last-week">Last Week</option>
+                      <option value="last-month">Last Month</option>
+                      <option value="last-3-months">Last 3 Months</option>
+                      <option value="last-year">Last Year</option>
+                    </select>
+                  </div>
+                )}
 
-              {globalFilterField && globalFilterValue !== 'all' && (
-                <span className="text-sm text-muted-foreground">
-                  Showing {globallyFilteredIssues.length} of {issues.length} issues
-                </span>
-              )}
+                {hasActiveFilters && (
+                  <>
+                    <button
+                      onClick={clearAllFilters}
+                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent"
+                    >
+                      Clear All Filters
+                    </button>
+                    <span className="text-sm text-muted-foreground">
+                      Showing {globallyFilteredIssues.length} of {issues.length} issues
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -323,6 +477,96 @@ function App() {
               </Card>
             ))}
           </div>
+
+          {/* Agile Boards Section */}
+          {boards.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Agile Boards</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {boardsLoading ? (
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    Loading agile boards...
+                  </div>
+                ) : boardsError ? (
+                  <div className="text-sm text-destructive">{boardsError}</div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {boards.map((board) => {
+                      const boardUrl = getAgileBoardUrl(board.id);
+
+                      return (
+                        <div
+                          key={board.id}
+                          className="rounded-lg border border-input bg-card p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="text-lg font-semibold">{board.name}</h3>
+                            {boardUrl && (
+                              <a
+                                href={boardUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                title="Open in YouTrack"
+                              >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              </a>
+                            )}
+                          </div>
+
+                          {board.owner && (
+                            <p className="text-sm text-muted-foreground mb-2">
+                              Owner: {board.owner.fullName}
+                            </p>
+                          )}
+
+                          {board.projects && board.projects.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-3">
+                              {board.projects.map((project) => (
+                                <span
+                                  key={project.id}
+                                  className="inline-flex items-center rounded-md bg-blue-100 dark:bg-blue-900 px-2 py-1 text-xs font-medium text-blue-800 dark:text-blue-100"
+                                >
+                                  {project.shortName}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {board.currentSprint && !board.sprintsSettings?.disableSprints && (
+                            <div className="mt-3 pt-3 border-t border-border">
+                              <p className="text-sm font-medium mb-1">Current Sprint:</p>
+                              <p className="text-sm text-muted-foreground mb-1">{board.currentSprint.name}</p>
+                              {board.currentSprint.goal && (
+                                <p className="text-xs text-muted-foreground italic">{board.currentSprint.goal}</p>
+                              )}
+                              {board.currentSprint.start && board.currentSprint.finish && (
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  {new Date(board.currentSprint.start).toLocaleDateString()} - {new Date(board.currentSprint.finish).toLocaleDateString()}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {board.sprintsSettings?.disableSprints && (
+                            <div className="mt-3 pt-3 border-t border-border">
+                              <span className="inline-flex items-center rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                                Kanban Board
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Charts Section */}
           <div className="grid gap-6 lg:grid-cols-2">
@@ -473,13 +717,27 @@ function App() {
                       {filteredIssues.map((issue) => {
                         const stateField = issue.customFields?.find(f => f.name === 'State');
                         const status = (stateField?.value as any)?.name || 'Unknown';
+                        const issueUrl = getIssueUrl(issue.idReadable);
 
                         return (
                           <tr key={issue.id} className="border-b hover:bg-muted/50">
-                            <td className="p-2 text-sm font-mono">{issue.idReadable}</td>
+                            <td className="p-2 text-sm font-mono">
+                              {issueUrl ? (
+                                <a
+                                  href={issueUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                                >
+                                  {issue.idReadable}
+                                </a>
+                              ) : (
+                                issue.idReadable
+                              )}
+                            </td>
                             <td className="p-2 text-sm font-medium">{issue.summary}</td>
                             <td className="p-2 text-sm">
-                              <span className="inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                              <span className="inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
                                 {status}
                               </span>
                             </td>
